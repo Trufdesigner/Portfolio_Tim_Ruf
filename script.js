@@ -92,7 +92,8 @@ projectDetailToggle.addEventListener('click', (event) => {
 
 projectView.addEventListener('wheel', (event) => {
   event.preventDefault();
-  projectView.scrollLeft += event.deltaY || event.deltaX;
+  // any scroll direction advances the gallery forward, same behavior as the homepage sliders
+  projectView.scrollLeft += Math.abs(event.deltaY || event.deltaX);
 }, { passive: false });
 
 projectView.addEventListener('scroll', () => {
@@ -588,6 +589,7 @@ let touchLastY = null;
 let touchMoved = 0;
 
 portfolio.addEventListener('touchstart', (event) => {
+  mobileHintCancelled = true;
   if (infoOpen || projectOpen) return;
   touchLastY = event.touches[0].clientY;
   touchMoved = 0;
@@ -612,6 +614,26 @@ portfolio.addEventListener('touchend', () => {
   // settle onto the next full slide with a bit of momentum after the finger lifts
   if (wasSwipe) snapToNextSlide(320);
 });
+
+// on first load on mobile, slowly auto-scrolls the sliders for a bit to hint that they're interactive
+let mobileHintCancelled = false;
+
+function animateMobileSliderHint(duration) {
+  const speed = 26; // px per second, deliberately slow
+  const start = performance.now();
+  let lastTime = start;
+
+  function step(now) {
+    if (mobileHintCancelled || infoOpen || projectOpen) return;
+    const distance = (speed * (now - lastTime)) / 1000;
+    lastTime = now;
+    moveSlider(topTrack, distance);
+    moveSlider(bottomTrack, distance);
+    if (now - start < duration) requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
 
 
 
@@ -703,6 +725,10 @@ async function playIntro() {
 
   await wait(200);
   portfolio.classList.add('intro-ready');
+
+  if (window.matchMedia('(max-width: 700px)').matches) {
+    animateMobileSliderHint(5000);
+  }
 }
 
 playIntro();
