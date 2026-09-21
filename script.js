@@ -554,34 +554,58 @@ portfolio.addEventListener('wheel', (event) => {
   moveSlider(bottomTrack, distance);
 }, { passive: false });
 
+// animates both tracks forward by exactly one slide, used for the mobile "one swipe = one slide" behavior
+function animateSlideAdvance(duration) {
+  const loopWidthTop = topTrack.scrollWidth / 2;
+  const loopWidthBottom = bottomTrack.scrollWidth / 2;
+  if (!loopWidthTop || !loopWidthBottom) return;
+  const stepTop = loopWidthTop / topProjects.length;
+  const stepBottom = loopWidthBottom / bottomProjects.length;
+  const start = performance.now();
+  let lastEased = 0;
+
+  function step(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - (1 - progress) ** 3;
+    const delta = eased - lastEased;
+    lastEased = eased;
+    moveSlider(topTrack, stepTop * delta);
+    moveSlider(bottomTrack, stepBottom * delta);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
+
+const TOUCH_SWIPE_THRESHOLD = 12;
+let touchSlideLocked = false;
+
 portfolio.addEventListener('touchstart', (event) => {
   if (infoOpen || projectOpen) return;
+  touchSlideLocked = false;
   sliderStates.forEach((state) => {
     state.touchStart = event.touches[0].clientY;
   });
 }, { passive: true });
 
 portfolio.addEventListener('touchmove', (event) => {
-  if (infoOpen || projectOpen) return;
+  if (infoOpen || projectOpen || touchSlideLocked) return;
   const currentY = event.touches[0].clientY;
-  let distance;
-  sliderStates.forEach((state) => {
-    if (state.touchStart !== null) {
-      distance = state.touchStart - currentY;
-      state.touchStart = currentY;
-    }
-  });
-  if (distance) {
-    moveSlider(topTrack, distance);
-    moveSlider(bottomTrack, distance);
-  }
+  const { touchStart } = sliderStates.get(topTrack);
+  if (touchStart === null) return;
+  // any swipe direction advances to the next slide, only the distance matters
+  if (Math.abs(touchStart - currentY) < TOUCH_SWIPE_THRESHOLD) return;
+  touchSlideLocked = true;
+  animateSlideAdvance(400);
 }, { passive: true });
 
 portfolio.addEventListener('touchend', () => {
   sliderStates.forEach((state) => {
     state.touchStart = null;
   });
+  touchSlideLocked = false;
 });
+
 
 // hints that the navbar is draggable: a tiny nudge on hover when it rests at the top or bottom
 const NUDGE_DISTANCE = 24;
