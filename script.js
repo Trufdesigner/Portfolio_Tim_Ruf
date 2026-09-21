@@ -483,8 +483,8 @@ const projectGalleryImages = {
 };
 
 const sliderStates = new Map([
-  [topTrack, { offset: 0, direction: 1, touchStart: null, index: 0 }],
-  [bottomTrack, { offset: 0, direction: 1, touchStart: null, index: 0 }],
+  [topTrack, { offset: 0, direction: 1, index: 0 }],
+  [bottomTrack, { offset: 0, direction: 1, index: 0 }],
 ]);
 
 // randomizes slide order on every page load; keeps both loop halves and the matching project data in sync
@@ -554,57 +554,65 @@ portfolio.addEventListener('wheel', (event) => {
   moveSlider(bottomTrack, distance);
 }, { passive: false });
 
-// animates both tracks forward by exactly one slide, used for the mobile "one swipe = one slide" behavior
-function animateSlideAdvance(duration) {
-  const loopWidthTop = topTrack.scrollWidth / 2;
-  const loopWidthBottom = bottomTrack.scrollWidth / 2;
-  if (!loopWidthTop || !loopWidthBottom) return;
-  const stepTop = loopWidthTop / topProjects.length;
-  const stepBottom = loopWidthBottom / bottomProjects.length;
+// animates both tracks forward until they land exactly on the next slide boundary
+function getSlideWidth(track) {
+  const projects = track === topTrack ? topProjects : bottomProjects;
+  const loopWidth = track.scrollWidth / 2;
+  return loopWidth ? loopWidth / projects.length : 0;
+}
+
+function snapToNextSlide(duration) {
+  const slideWidth = getSlideWidth(topTrack);
+  if (!slideWidth) return;
+  const state = sliderStates.get(topTrack);
+  const mod = state.offset % slideWidth;
+  const remaining = mod === 0 ? slideWidth : slideWidth - mod;
   const start = performance.now();
   let lastEased = 0;
 
   function step(now) {
     const progress = Math.min(1, (now - start) / duration);
     const eased = 1 - (1 - progress) ** 3;
-    const delta = eased - lastEased;
+    const delta = (eased - lastEased) * remaining;
     lastEased = eased;
-    moveSlider(topTrack, stepTop * delta);
-    moveSlider(bottomTrack, stepBottom * delta);
+    moveSlider(topTrack, delta);
+    moveSlider(bottomTrack, delta);
     if (progress < 1) requestAnimationFrame(step);
   }
 
   requestAnimationFrame(step);
 }
 
-const TOUCH_SWIPE_THRESHOLD = 12;
-let touchSlideLocked = false;
+const TOUCH_TAP_THRESHOLD = 8;
+let touchLastY = null;
+let touchMoved = 0;
 
 portfolio.addEventListener('touchstart', (event) => {
   if (infoOpen || projectOpen) return;
-  touchSlideLocked = false;
-  sliderStates.forEach((state) => {
-    state.touchStart = event.touches[0].clientY;
-  });
+  touchLastY = event.touches[0].clientY;
+  touchMoved = 0;
 }, { passive: true });
 
 portfolio.addEventListener('touchmove', (event) => {
-  if (infoOpen || projectOpen || touchSlideLocked) return;
+  if (infoOpen || projectOpen || touchLastY === null) return;
   const currentY = event.touches[0].clientY;
-  const { touchStart } = sliderStates.get(topTrack);
-  if (touchStart === null) return;
-  // any swipe direction advances to the next slide, only the distance matters
-  if (Math.abs(touchStart - currentY) < TOUCH_SWIPE_THRESHOLD) return;
-  touchSlideLocked = true;
-  animateSlideAdvance(400);
+  const distance = Math.abs(touchLastY - currentY);
+  touchLastY = currentY;
+  if (!distance) return;
+  touchMoved += distance;
+  // any swipe direction advances forward, tracking the finger live for instant feedback
+  moveSlider(topTrack, distance);
+  moveSlider(bottomTrack, distance);
 }, { passive: true });
 
 portfolio.addEventListener('touchend', () => {
-  sliderStates.forEach((state) => {
-    state.touchStart = null;
-  });
-  touchSlideLocked = false;
+  const wasSwipe = touchMoved >= TOUCH_TAP_THRESHOLD;
+  touchLastY = null;
+  touchMoved = 0;
+  // settle onto the next full slide with a bit of momentum after the finger lifts
+  if (wasSwipe) snapToNextSlide(320);
 });
+
 
 
 // hints that the navbar is draggable: a tiny nudge on hover when it rests at the top or bottom
